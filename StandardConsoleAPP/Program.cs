@@ -9,7 +9,6 @@ using Pole.Tester;
 using Serilog;
 using System;
 using System.IO;
-using System.Linq;
 using Log = Serilog.Log;
 
 namespace ProbadorPostes
@@ -21,24 +20,6 @@ namespace ProbadorPostes
             var connection = ConnectionFactory.CreateConnection(TikConnectionType.Api);
             connection.Open(host, user, pass);
             return connection;
-        }
-
-        private static void RunBandwidthTestSample(ITikConnection connection)
-        {
-            var p = new BandwidthTestParameters
-            {
-                Address = "192.168.0.70",
-                User = "admin",
-                Password = "",
-                Protocol = BandwidthTestProtocols.Udp,
-                Duration = "10s",
-                LocalTxSpeed = "1024k",
-                RemoteTxSpeed = "1024k"
-            };
-            var btest = new BandwidthTest(connection);
-            var results = btest.Run(p, 5);
-            foreach (var r in results)
-                Console.WriteLine($"{r.Status} {r.RxTotalAverage} {r.TxTotalAverage}");
         }
 
         private static ConfigurationClass InitialSetup()
@@ -73,15 +54,17 @@ namespace ProbadorPostes
 
             var poeReader = connection.CreateEntityReader<EthernetPoe>();
 
-            var poeInterfaces = poeReader.GetAll().ToArray();
+            var bTest = new BandwidthTest(connection);
 
-            var poleTester = new PoleTester(Log.Logger);
+            var poleTester = new PoleTester(Log.Logger, connection);
 
             var interfacesToTest = poleTester.GetNeighborsOnRunningInterfaces(etherReader, neighReader);
 
-            var interfacesPoeStatus = poleTester.GetInterfacesPoeStatus(connection, poeInterfaces);
+            var interfacesPoeStatus = poleTester.GetInterfacesPoeStatus(poeReader);
 
+            var interfacesNegotiation = poleTester.GetInterfacesNegotiation(etherReader);
 
+            var interfacesBandwidthTest = poleTester.RunBandwidthTests(interfacesToTest, interfacesNegotiation, bTest);
 
             foreach (var ethtotest in interfacesToTest)
             {
@@ -93,8 +76,13 @@ namespace ProbadorPostes
                 Log.Logger.Information("Estado Poe {InterfacePoeStatus}", ethPoeStatus.ToString());
             }
 
+            foreach (var ifaceNegotiation in interfacesNegotiation)
+            {
+                Log.Logger.Information("Negotiation {InterfaceNegotiation}", ifaceNegotiation.ToString());
+            }
+
             connection.Dispose();
-            Log.Logger.Information("Done!, press any key to end");
+            Log.Logger.Information("Done!, press Enter to end");
             Console.ReadLine();
         }
     }
